@@ -1,0 +1,81 @@
+name: Publish to PyPI
+
+on:
+  release:
+    types:
+      - published
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build distributions
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          python-version: "3.14"
+          enable-cache: true
+
+      - name: Verify release version
+        shell: bash
+        run: |
+          package_version="$(uv version --short)"
+          release_version="${GITHUB_REF_NAME#v}"
+
+          echo "Package version: $package_version"
+          echo "Release version: $release_version"
+
+          if [ "$package_version" != "$release_version" ]; then
+            echo "Release tag does not match pyproject.toml."
+            exit 1
+          fi
+
+      - name: Build distributions
+        run: uv build --no-sources
+
+      - name: Validate distributions
+        run: uvx twine check dist/*
+
+      - name: Upload distributions
+        uses: actions/upload-artifact@v7
+        with:
+          name: python-package-distributions
+          path: dist/
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    name: Publish to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    environment:
+      name: pypi
+      url: https://pypi.org/project/pytestquick/
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Download distributions
+        uses: actions/download-artifact@v8
+        with:
+          name: python-package-distributions
+          path: dist/
+
+      - name: Publish distributions
+        uses: pypa/gh-action-pypi-publish@release/v1

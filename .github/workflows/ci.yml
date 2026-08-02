@@ -1,0 +1,140 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Code quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          python-version: "3.14"
+          enable-cache: true
+          cache-suffix: quality
+
+      - name: Install dependencies
+        run: uv sync --dev --locked
+
+      - name: Check formatting
+        run: uv run ruff format . --check
+
+      - name: Run Ruff
+        run: uv run ruff check .
+
+      - name: Run mypy
+        run: uv run mypy src tests
+
+  test:
+    name: Python ${{ matrix.python-version }}
+    needs: quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    permissions:
+      contents: read
+      id-token: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version:
+          - "3.11"
+          - "3.12"
+          - "3.13"
+          - "3.14"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          python-version: ${{ matrix.python-version }}
+          enable-cache: true
+          cache-suffix: python-${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: uv sync --dev --locked
+
+      - name: Run tests
+        run: |
+          uv run pytest \
+            --cov=pytestquick \
+            --cov-branch \
+            --cov-report=term-missing \
+            --cov-report=xml
+
+      - name: Upload coverage to Codecov
+        if: >-
+          matrix.python-version == '3.14' &&
+          (
+            github.event_name != 'pull_request' ||
+            github.event.pull_request.head.repo.full_name == github.repository
+          )
+        uses: codecov/codecov-action@v6
+        with:
+          files: coverage.xml
+          fail_ci_if_error: true
+          use_oidc: true
+
+  package:
+    name: Package validation
+    needs:
+      - quality
+      - test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          python-version: "3.14"
+          enable-cache: true
+          cache-suffix: package
+
+      - name: Install dependencies
+        run: uv sync --dev --locked
+
+      - name: Build distributions
+        run: make build
+
+      - name: Validate distributions
+        run: make check-dist
+
+      - name: Verify typed wheel
+        run: |
+          wheel="$(find dist -maxdepth 1 -name '*.whl' -print -quit)"
+
+          if [ -z "$wheel" ]; then
+            echo "No wheel found after build."
+            exit 1
+          fi
+
+          unzip -l "$wheel" | grep -q "pytestquick/py.typed"
+          echo "✅ Wheel contains pytestquick/py.typed"
+
+      - name: Install and test wheel
+        run: make install-wheel
