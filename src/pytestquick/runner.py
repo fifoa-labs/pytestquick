@@ -6,11 +6,31 @@ Pytest command construction and execution helpers.
 
 from __future__ import annotations
 
+import importlib.util
 import shlex
 import subprocess
 import sys
 
 from .logging import LogColors, log
+
+
+def require_coverage() -> None:
+    """
+    Verify that the coverage package is installed.
+
+    Raises:
+        RuntimeError: If coverage is unavailable in the active environment.
+    """
+    if importlib.util.find_spec("coverage") is not None:
+        return
+
+    msg = (
+        "Coverage support requires the optional 'coverage' package.\n\n"
+        "Install it with one of these commands:\n\n"
+        "  pip install coverage\n"
+        "  uv add --dev coverage"
+    )
+    raise RuntimeError(msg)
 
 
 def build_command(
@@ -38,6 +58,13 @@ def build_command(
 
     Returns:
         The complete subprocess command.
+
+    Raises:
+        RuntimeError:
+            If ``--coverage`` is requested but coverage is not installed.
+
+        ValueError:
+            If ``--grep`` is supplied without a pattern.
     """
     remaining_args = args.copy()
 
@@ -77,6 +104,7 @@ def build_command(
         ]
 
     if "--coverage" in remaining_args:
+        require_coverage()
         remaining_args.remove("--coverage")
 
         return [
@@ -118,6 +146,13 @@ def run_test(
 
     Returns:
         The exact exit status returned by pytest or coverage.
+
+    Raises:
+        RuntimeError:
+            If an optional execution dependency is unavailable.
+
+        ValueError:
+            If a pytestquick option is invalid.
     """
     command = build_command(
         test_target,
@@ -144,5 +179,6 @@ def run_test(
 
 __all__ = [
     "build_command",
+    "require_coverage",
     "run_test",
 ]

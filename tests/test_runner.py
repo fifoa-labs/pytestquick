@@ -240,3 +240,22 @@ def test_run_test_executes_command_and_returns_exit_code(
         ],
         check=False,
     )
+
+
+def test_build_command_raises_when_coverage_is_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Coverage mode should fail gracefully when coverage is unavailable."""
+    monkeypatch.setattr(
+        "importlib.util.find_spec",
+        lambda _: None,
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="Coverage support requires",
+    ):
+        build_command(
+            "tests/test_models.py",
+            ["--coverage"],
+        )

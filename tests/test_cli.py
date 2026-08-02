@@ -519,6 +519,7 @@ def test_main_returns_one_when_target_resolution_fails(
     [
         FileNotFoundError("missing"),
         OSError("unreadable"),
+        RuntimeError("coverage missing"),
         ValueError("invalid"),
     ],
 )

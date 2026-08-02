@@ -31,7 +31,7 @@ def build_parser() -> argparse.ArgumentParser:
     """Build the command-line parser."""
     parser = argparse.ArgumentParser(
         prog="pytestquick",
-        description=("Run the pytest you are actually working on."),
+        description="Run the pytest you are actually working on.",
         epilog="""\
 Examples:
   pytestquick
@@ -55,7 +55,7 @@ Examples:
     parser.add_argument(
         "target",
         nargs="?",
-        help=("Application, test file, class, method, or pytest node."),
+        help=("Application directory, test file, class, method, or pytest node."),
     )
 
     return parser
@@ -164,8 +164,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             process command-line arguments.
 
     Returns:
-        The exit status returned by pytest, or ``1`` when target resolution
-        fails.
+        The exit status returned by pytest, or ``1`` when discovery or
+        command construction fails.
     """
     parser = build_parser()
     namespace, pytest_args = parser.parse_known_args(argv)
@@ -177,7 +177,23 @@ def main(argv: Sequence[str] | None = None) -> int:
             namespace.target,
             project_root,
         )
-    except (FileNotFoundError, OSError, ValueError) as exc:
+
+        report_selection(
+            selection_kind,
+            test_target,
+        )
+
+        return run_test(
+            test_target,
+            pytest_args,
+        )
+
+    except (
+        FileNotFoundError,
+        OSError,
+        RuntimeError,
+        ValueError,
+    ) as exc:
         log.error(
             "%sError:%s %s",
             LogColors.ERROR,
@@ -185,16 +201,6 @@ def main(argv: Sequence[str] | None = None) -> int:
             exc,
         )
         return 1
-
-    report_selection(
-        selection_kind,
-        test_target,
-    )
-
-    return run_test(
-        test_target,
-        pytest_args,
-    )
 
 
 __all__ = [
