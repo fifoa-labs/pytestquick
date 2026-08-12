@@ -54,6 +54,33 @@ def test_build_parser_defaults_target_to_none() -> None:
     assert namespace.target is None
 
 
+def test_build_parser_enables_coverage_by_default() -> None:
+    """Coverage should be enabled unless explicitly disabled."""
+    parser = cli.build_parser()
+
+    namespace = parser.parse_args([])
+
+    assert namespace.coverage is True
+
+
+def test_build_parser_accepts_explicit_coverage() -> None:
+    """The coverage option should explicitly enable coverage."""
+    parser = cli.build_parser()
+
+    namespace = parser.parse_args(["--coverage"])
+
+    assert namespace.coverage is True
+
+
+def test_build_parser_accepts_no_coverage() -> None:
+    """The no-coverage option should disable coverage."""
+    parser = cli.build_parser()
+
+    namespace = parser.parse_args(["--no-coverage"])
+
+    assert namespace.coverage is False
+
+
 def test_build_parser_displays_version(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -84,7 +111,25 @@ def test_build_parser_help_contains_examples(
     assert "pytestquick billing" in output
     assert "pytestquick TestInvoice" in output
     assert "pytestquick test_total" in output
-    assert "pytestquick --coverage" in output
+    assert "pytestquick --no-coverage" in output
+
+
+def test_build_parser_help_describes_default_coverage(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The help output should make the default coverage behavior clear."""
+    parser = cli.build_parser()
+
+    with pytest.raises(SystemExit) as exc_info:
+        parser.parse_args(["--help"])
+
+    assert exc_info.value.code == 0
+
+    output = capsys.readouterr().out
+
+    assert "--coverage" in output
+    assert "--no-coverage" in output
+    assert "default: enabled" in output
 
 
 def test_report_selection_logs_kind_and_target(
@@ -157,7 +202,7 @@ def test_resolve_explicit_target_preserves_node_suffix(
         tmp_path,
     )
 
-    assert result == ("tests/test_models.py::TestInvoice::test_total")
+    assert result == "tests/test_models.py::TestInvoice::test_total"
 
 
 def test_resolve_target_selects_latest_test_file(
@@ -379,11 +424,11 @@ def test_resolve_target_raises_for_unknown_target(
     assert f"Searched from: {tmp_path}" in message
 
 
-def test_main_runs_latest_test_file_by_default(
+def test_main_runs_latest_test_file_with_coverage_by_default(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """No arguments should run the latest test beneath the current folder."""
+    """No arguments should run the latest test with coverage enabled."""
     write_file(tmp_path / "tests" / "test_models.py")
     run_test = Mock(return_value=0)
     report_selection = Mock()
@@ -406,6 +451,7 @@ def test_main_runs_latest_test_file_by_default(
     run_test.assert_called_once_with(
         "tests/test_models.py",
         [],
+        coverage=True,
     )
 
 
@@ -442,14 +488,15 @@ def test_main_runs_explicit_target_with_pytest_arguments(
     run_test.assert_called_once_with(
         "tests/test_models.py",
         ["-vv", "-x"],
+        coverage=True,
     )
 
 
-def test_main_accepts_custom_flag_without_target(
+def test_main_accepts_explicit_coverage(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A custom runner option should work with latest-file discovery."""
+    """The coverage option should explicitly enable coverage."""
     write_file(tmp_path / "tests" / "test_models.py")
     run_test = Mock(return_value=0)
 
@@ -466,7 +513,34 @@ def test_main_accepts_custom_flag_without_target(
     assert result == 0
     run_test.assert_called_once_with(
         "tests/test_models.py",
-        ["--coverage"],
+        [],
+        coverage=True,
+    )
+
+
+def test_main_accepts_no_coverage(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The no-coverage option should disable coverage."""
+    write_file(tmp_path / "tests" / "test_models.py")
+    run_test = Mock(return_value=0)
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(cli, "run_test", run_test)
+    monkeypatch.setattr(
+        cli,
+        "report_selection",
+        Mock(),
+    )
+
+    result = cli.main(["--no-coverage"])
+
+    assert result == 0
+    run_test.assert_called_once_with(
+        "tests/test_models.py",
+        [],
+        coverage=False,
     )
 
 
@@ -528,7 +602,7 @@ def test_main_handles_expected_resolution_errors(
     monkeypatch: pytest.MonkeyPatch,
     exception: Exception,
 ) -> None:
-    """Expected discovery failures should return status one."""
+    """Expected discovery or runner failures should return status one."""
     resolve_target = Mock(side_effect=exception)
     run_test = Mock(return_value=0)
 

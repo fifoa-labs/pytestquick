@@ -31,17 +31,35 @@ def build_parser() -> argparse.ArgumentParser:
     """Build the command-line parser."""
     parser = argparse.ArgumentParser(
         prog="pytestquick",
-        description="Run the pytest you are actually working on.",
+        description=(
+            "Run the pytest target you are actually working on, "
+            "with coverage by default."
+        ),
         epilog="""\
 Examples:
   pytestquick
+      Run the most recently modified test file with coverage.
+
   pytestquick billing
+      Run tests beneath the billing application with coverage.
+
   pytestquick TestInvoice
+      Run a test class from the most recently modified matching test file.
+
   pytestquick test_total
+      Run a test method or function.
+
   pytestquick tests/test_models.py
+      Run an explicit test file.
+
   pytestquick tests/test_models.py::TestInvoice::test_total
-  pytestquick --coverage
+      Run an explicit pytest node.
+
+  pytestquick --no-coverage
+      Run without coverage.
+
   pytestquick billing -vv -x
+      Forward normal pytest arguments unchanged.
 """,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -50,12 +68,25 @@ Examples:
         "--version",
         action="version",
         version=f"%(prog)s {__version__}",
+        help="Show the installed version and exit.",
+    )
+
+    parser.add_argument(
+        "--coverage",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Show branch coverage and missing lines in the terminal (default: enabled)."
+        ),
     )
 
     parser.add_argument(
         "target",
         nargs="?",
-        help=("Application directory, test file, class, method, or pytest node."),
+        metavar="TARGET",
+        help=(
+            "Application directory, test file, test class, test method, or pytest node."
+        ),
     )
 
     return parser
@@ -186,6 +217,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return run_test(
             test_target,
             pytest_args,
+            coverage=namespace.coverage,
         )
 
     except (

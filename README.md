@@ -9,10 +9,16 @@
 A small command-line utility for quickly discovering and running pytest targets.
 
 `pytestquick` discovers the pytest target you are most likely working on from
-the current working directory and delegates execution directly to pytest. It
-supports explicit test files, pytest node IDs, application directories, test
+the current working directory and delegates execution to pytest, with concise
+terminal coverage enabled by default.
+
+It supports explicit test files, pytest node IDs, application directories, test
 classes, test methods, and—when no target is supplied—the most recently
 modified test file.
+
+Coverage is intentionally part of the normal development loop. By default,
+`pytestquick` reports branch coverage and missing lines for the source scope
+associated with the selected test target.
 
 It intentionally focuses on pytest target discovery and command construction.
 It does not replace pytest, introduce another test framework, or change how
@@ -75,21 +81,22 @@ $ pytestquick
   tests/services/test_invoice.py
 
 → Running:
-  /path/to/python -m pytest -rs tests/services/test_invoice.py --disable-warnings
+  /path/to/python -m pytest -rs tests/services/test_invoice.py --disable-warnings --cov=my_package --cov-branch --cov-report=term-missing
 ```
 
 `pytestquick` reports the selected target, shows the exact command being run,
-and returns pytest's exit status unchanged.
+prints branch coverage and missing lines in the terminal, and returns pytest's
+exit status unchanged.
 
 ## Usage
 
-Run the most recently modified test file:
+Run the most recently modified test file with coverage:
 
 ```console
 pytestquick
 ```
 
-Run all tests beneath an application or package directory:
+Run all tests beneath an application or package directory with coverage:
 
 ```console
 pytestquick billing
@@ -137,7 +144,21 @@ Filter tests by keyword:
 pytestquick --grep invoice
 ```
 
-Run the selected tests through coverage:
+Coverage is enabled by default:
+
+```console
+pytestquick
+pytestquick billing
+```
+
+Run without coverage:
+
+```console
+pytestquick --no-coverage
+pytestquick billing --no-coverage
+```
+
+The explicit coverage option remains available:
 
 ```console
 pytestquick --coverage
@@ -169,7 +190,8 @@ cd ~/Sites/project/billing
 pytestquick
 ```
 
-`pytestquick` does not walk upward looking for a repository root, Git directory, or configuration file.
+`pytestquick` does not walk upward looking for a repository root, Git directory,
+or configuration file.
 
 The directory where the command is run is the directory it searches.
 
@@ -178,7 +200,8 @@ A Python file is considered a test file when either:
 * its name begins with `test_`
 * it is located beneath a directory named `tests`
 
-When multiple matching application directories exist, `pytestquick` prefers the shallowest one that contains tests.
+When multiple matching application directories exist, `pytestquick` prefers the
+shallowest one that contains tests.
 
 ## Target resolution
 
@@ -192,7 +215,9 @@ Targets are interpreted in this order:
 
 Once a target is selected, `pytestquick` delegates execution to pytest.
 
-> Find the right test. Let pytest do the rest.
+> **Find the right test. Run it. See what it covers.**
+>
+> Let pytest do the rest.
 
 ## Special options
 
@@ -203,7 +228,7 @@ pytestquick --list
 pytestquick billing --list
 ```
 
-This runs pytest with `--collect-only`.
+This runs pytest with `--collect-only`. Coverage is not collected in list mode.
 
 ### Filter by keyword
 
@@ -212,16 +237,37 @@ pytestquick --grep invoice
 pytestquick billing --grep invoice
 ```
 
-This translates to pytest's `-k` option.
+This translates to pytest's `-k` option and still reports coverage by default.
 
-### Run with coverage
+### Coverage
+
+Coverage is enabled by default.
+
+```console
+pytestquick
+pytestquick billing
+pytestquick tests/test_models.py
+```
+
+`pytestquick` uses pytest-cov to report branch coverage and missing lines
+directly in the terminal.
+
+The coverage scope is inferred from the selected test target. For example, a
+test beneath an application's `tests` directory reports coverage for that
+application rather than for the test file itself.
+
+To run without coverage:
+
+```console
+pytestquick --no-coverage
+pytestquick billing --no-coverage
+```
+
+The explicit `--coverage` option remains supported:
 
 ```console
 pytestquick --coverage
-pytestquick billing --coverage
 ```
-
-This runs the selected target through Python's `coverage` module.
 
 ## Pytest arguments
 
@@ -236,7 +282,7 @@ pytestquick tests/test_models.py --tb=short
 
 ## Exit statuses
 
-`pytestquick` returns the exact exit status produced by pytest or coverage.
+`pytestquick` returns the exact exit status produced by pytest.
 
 This means it behaves correctly in:
 
@@ -267,9 +313,11 @@ pytestquick test_case
 
 It does not replace pytest.
 
-It does not introduce another testing framework, configuration system, or plugin architecture.
+It does not introduce another testing framework, configuration system, or
+plugin architecture.
 
-It simply removes friction from running the test you are currently working on.
+It simply removes friction from running the test you are currently working on
+and seeing how much of the surrounding code that test exercises.
 
 ## Development
 
