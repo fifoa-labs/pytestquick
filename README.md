@@ -81,7 +81,7 @@ $ pytestquick
   tests/services/test_invoice.py
 
 → Running:
-  /path/to/python -m pytest -rs tests/services/test_invoice.py --disable-warnings --cov=my_package --cov-branch --cov-report=term-missing
+  /path/to/python -m pytest -rs tests/services/test_invoice.py --disable-warnings --cov=my_package.services.invoice --cov-branch --cov-report=term-missing
 ```
 
 `pytestquick` reports the selected target, shows the exact command being run,
@@ -252,9 +252,10 @@ pytestquick tests/test_models.py
 `pytestquick` uses pytest-cov to report branch coverage and missing lines
 directly in the terminal.
 
-The coverage scope is inferred from the selected test target. For example, a
-test beneath an application's `tests` directory reports coverage for that
-application rather than for the test file itself.
+The coverage scope is inferred from the selected test target. A single test
+file or pytest node reports coverage for its matching source module when one
+can be identified. An explicit application or package directory reports
+coverage for that entire application or package.
 
 To run without coverage:
 

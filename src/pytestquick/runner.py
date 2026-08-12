@@ -64,35 +64,105 @@ def discover_src_package(project_root: Path) -> str | None:
     return packages[0].name
 
 
-def infer_coverage_scope(  # noqa: PLR0911
-    test_target: str,
-    project_root: Path | None = None,
+def _source_filename(test_file: Path) -> str:
+    """Return the likely source filename for a test file."""
+    stem = test_file.stem
+
+    if stem.startswith("test_"):
+        stem = stem.removeprefix("test_")
+
+    return f"{stem}.py"
+
+
+def _module_name(source_file: Path) -> str:
+    """Convert a project-relative Python source path into an import name."""
+    module_path = source_file.with_suffix("")
+    parts = list(module_path.parts)
+
+    if parts and parts[0] == "src":
+        parts = parts[1:]
+
+    if parts and parts[-1] == "__init__":
+        parts = parts[:-1]
+
+    return ".".join(parts)
+
+
+def _source_candidates(
+    test_file: Path,
+    project_root: Path,
+) -> list[Path]:
+    """Build likely source-file candidates for a selected test file."""
+    parts = test_file.parts
+    source_name = _source_filename(test_file)
+    candidates: list[Path] = []
+
+    if "tests" in parts:
+        tests_index = len(parts) - 1 - parts[::-1].index("tests")
+        source_parts = parts[:tests_index]
+        nested_parts = parts[tests_index + 1 : -1]
+
+        if source_parts:
+            source_root = Path(*source_parts)
+
+            if nested_parts:
+                candidates.append(
+                    source_root.joinpath(
+                        *nested_parts,
+                        source_name,
+                    )
+                )
+
+            candidates.append(source_root / source_name)
+        else:
+            src_package = discover_src_package(project_root)
+
+            if src_package is not None:
+                source_root = Path("src") / src_package
+
+                if nested_parts:
+                    candidates.append(
+                        source_root.joinpath(
+                            *nested_parts,
+                            source_name,
+                        )
+                    )
+
+                candidates.append(source_root / source_name)
+
+            if nested_parts:
+                candidates.append(Path(*nested_parts) / source_name)
+
+            candidates.append(Path(source_name))
+
+        return candidates
+
+    if test_file.name.startswith("test_"):
+        candidates.append(test_file.with_name(source_name))
+
+    return candidates
+
+
+def _matching_source_module(
+    test_file: Path,
+    project_root: Path,
+) -> str | None:
+    """Return the import name of the matching source file when one exists."""
+    for candidate in _source_candidates(
+        test_file,
+        project_root,
+    ):
+        if (project_root / candidate).is_file():
+            return _module_name(candidate)
+
+    return None
+
+
+def _fallback_coverage_scope(  # noqa: PLR0911
+    path: Path,
+    project_root: Path,
 ) -> str:
-    """
-    Infer the source scope that should be measured for a pytest target.
-
-    Test files beneath a ``tests`` directory map to the package or application
-    directory containing that tests directory.
-
-    Root-level ``tests`` directories prefer a single package beneath ``src``.
-
-    Directory targets are measured directly.
-
-    Args:
-        test_target:
-            Resolved pytest target, optionally including a pytest node ID.
-
-        project_root:
-            Project root used for package discovery. Defaults to the current
-            working directory.
-
-    Returns:
-        A path or import package suitable for pytest-cov's ``--cov`` option.
-    """
-    root = project_root or Path.cwd()
-
-    path_text, _, _ = test_target.partition("::")
-    path = Path(path_text)
+    """Return a broader coverage scope when no source file can be inferred."""
     parts = path.parts
 
     if "tests" in parts:
@@ -102,7 +172,7 @@ def infer_coverage_scope(  # noqa: PLR0911
         if source_parts:
             return Path(*source_parts).as_posix()
 
-        src_package = discover_src_package(root)
+        src_package = discover_src_package(project_root)
 
         if src_package is not None:
             return src_package
@@ -115,7 +185,7 @@ def infer_coverage_scope(  # noqa: PLR0911
         if parent != Path():
             return parent.as_posix()
 
-        src_package = discover_src_package(root)
+        src_package = discover_src_package(project_root)
 
         if src_package is not None:
             return src_package
@@ -123,6 +193,54 @@ def infer_coverage_scope(  # noqa: PLR0911
         return "."
 
     return path.as_posix()
+
+
+def infer_coverage_scope(
+    test_target: str,
+    project_root: Path | None = None,
+) -> str:
+    """
+    Infer the source scope that should be measured for a pytest target.
+
+    A single test file, class, method, or pytest node prefers the matching
+    source module. For example, ``tests/test_runner.py`` can map to
+    ``pytestquick.runner``.
+
+    An application or package directory remains a directory-wide coverage
+    target.
+
+    When no matching source file can be found, pytestquick falls back to the
+    containing package or application.
+
+    Args:
+        test_target:
+            Resolved pytest target, optionally including a pytest node ID.
+
+        project_root:
+            Project root used for source discovery. Defaults to the current
+            working directory.
+
+    Returns:
+        A path or importable module suitable for pytest-cov's ``--cov`` option.
+    """
+    root = project_root or Path.cwd()
+
+    path_text, _, _ = test_target.partition("::")
+    path = Path(path_text)
+
+    if path.suffix == ".py":
+        source_module = _matching_source_module(
+            path,
+            root,
+        )
+
+        if source_module is not None:
+            return source_module
+
+    return _fallback_coverage_scope(
+        path,
+        root,
+    )
 
 
 def build_command(

@@ -1,6 +1,6 @@
 [project]
 name = "pytestquick"
-version = "0.1.3"
+version = "0.1.4"
 description = "A tiny CLI for quickly running the pytest tests you are currently working on."
 readme = "README.md"
 requires-python = ">=3.11"

@@ -113,36 +113,79 @@ def test_discover_src_package_returns_none_for_multiple_packages(
     assert runner.discover_src_package(tmp_path) is None
 
 
-def test_infer_coverage_scope_uses_parent_of_nested_tests_directory(
+def test_infer_coverage_scope_uses_matching_nested_source_file(
     tmp_path: Path,
 ) -> None:
-    """Nested tests should measure their containing application."""
+    """A nested test file should cover its matching source module."""
+    write_file(
+        tmp_path / "fab" / "tasks" / "sync_envs" / "syncer.py",
+    )
+
     result = runner.infer_coverage_scope(
-        "fab/tasks/sync_envs/tests/test_transport.py",
+        "fab/tasks/sync_envs/tests/test_syncer.py",
         tmp_path,
     )
 
-    assert result == "fab/tasks/sync_envs"
+    assert result == "fab.tasks.sync_envs.syncer"
 
 
 def test_infer_coverage_scope_strips_pytest_node_suffix(
     tmp_path: Path,
 ) -> None:
-    """Pytest class and method suffixes should not affect coverage scope."""
+    """A pytest node should still cover its matching source module."""
+    write_file(
+        tmp_path / "fab" / "tasks" / "sync_envs" / "transport.py",
+    )
+
     result = runner.infer_coverage_scope(
         ("fab/tasks/sync_envs/tests/test_transport.py::TestTransport::test_send"),
         tmp_path,
     )
 
-    assert result == "fab/tasks/sync_envs"
+    assert result == "fab.tasks.sync_envs.transport"
 
 
-def test_infer_coverage_scope_uses_src_package_for_root_tests(
+def test_infer_coverage_scope_handles_nested_tests_subdirectories(
     tmp_path: Path,
 ) -> None:
-    """Root tests should map to a single src-layout package."""
+    """Nested directories below tests should map to matching source paths."""
+    write_file(
+        tmp_path / "billing" / "services" / "invoice.py",
+    )
+
+    result = runner.infer_coverage_scope(
+        "billing/tests/services/test_invoice.py",
+        tmp_path,
+    )
+
+    assert result == "billing.services.invoice"
+
+
+def test_infer_coverage_scope_handles_django_app_test_layout(
+    tmp_path: Path,
+) -> None:
+    """A Django app test should map to its matching source module."""
+    write_file(
+        tmp_path / "atlas" / "appstore" / "pages" / "views" / "django" / "base.py",
+    )
+
+    result = runner.infer_coverage_scope(
+        ("atlas/appstore/pages/views/django/tests/test_base.py"),
+        tmp_path,
+    )
+
+    assert result == "atlas.appstore.pages.views.django.base"
+
+
+def test_infer_coverage_scope_uses_matching_src_module_for_root_tests(
+    tmp_path: Path,
+) -> None:
+    """Root tests should cover the matching module in a src layout."""
     write_file(
         tmp_path / "src" / "pytestquick" / "__init__.py",
+    )
+    write_file(
+        tmp_path / "src" / "pytestquick" / "runner.py",
     )
 
     result = runner.infer_coverage_scope(
@@ -150,7 +193,35 @@ def test_infer_coverage_scope_uses_src_package_for_root_tests(
         tmp_path,
     )
 
+    assert result == "pytestquick.runner"
+
+
+def test_infer_coverage_scope_falls_back_to_src_package(
+    tmp_path: Path,
+) -> None:
+    """Root tests without a matching module should use the src package."""
+    write_file(
+        tmp_path / "src" / "pytestquick" / "__init__.py",
+    )
+
+    result = runner.infer_coverage_scope(
+        "tests/test_unknown.py",
+        tmp_path,
+    )
+
     assert result == "pytestquick"
+
+
+def test_infer_coverage_scope_falls_back_to_nested_package(
+    tmp_path: Path,
+) -> None:
+    """Nested tests without a source match should use their application."""
+    result = runner.infer_coverage_scope(
+        "fab/tasks/sync_envs/tests/test_unknown.py",
+        tmp_path,
+    )
+
+    assert result == "fab/tasks/sync_envs"
 
 
 def test_infer_coverage_scope_uses_project_for_root_tests_without_package(
@@ -158,17 +229,33 @@ def test_infer_coverage_scope_uses_project_for_root_tests_without_package(
 ) -> None:
     """Root tests should fall back to the project when no package is clear."""
     result = runner.infer_coverage_scope(
-        "tests/test_runner.py",
+        "tests/test_unknown.py",
         tmp_path,
     )
 
     assert result == "."
 
 
-def test_infer_coverage_scope_uses_parent_for_python_file(
+def test_infer_coverage_scope_uses_matching_adjacent_source_file(
     tmp_path: Path,
 ) -> None:
-    """A Python file outside tests should measure its containing directory."""
+    """A test beside its source file should cover that source module."""
+    write_file(
+        tmp_path / "runner.py",
+    )
+
+    result = runner.infer_coverage_scope(
+        "test_runner.py",
+        tmp_path,
+    )
+
+    assert result == "runner"
+
+
+def test_infer_coverage_scope_uses_parent_for_source_python_file(
+    tmp_path: Path,
+) -> None:
+    """A direct source file target should measure its containing directory."""
     result = runner.infer_coverage_scope(
         "fab/tasks/transport.py",
         tmp_path,
@@ -177,38 +264,10 @@ def test_infer_coverage_scope_uses_parent_for_python_file(
     assert result == "fab/tasks"
 
 
-def test_infer_coverage_scope_uses_src_package_for_root_python_file(
-    tmp_path: Path,
-) -> None:
-    """A root Python target should prefer a single src-layout package."""
-    write_file(
-        tmp_path / "src" / "pytestquick" / "__init__.py",
-    )
-
-    result = runner.infer_coverage_scope(
-        "test_runner.py",
-        tmp_path,
-    )
-
-    assert result == "pytestquick"
-
-
-def test_infer_coverage_scope_uses_project_for_root_python_file_without_package(
-    tmp_path: Path,
-) -> None:
-    """A root Python target should fall back to the current project."""
-    result = runner.infer_coverage_scope(
-        "test_runner.py",
-        tmp_path,
-    )
-
-    assert result == "."
-
-
 def test_infer_coverage_scope_uses_directory_target_directly(
     tmp_path: Path,
 ) -> None:
-    """Application directory targets should measure that directory."""
+    """Application directory targets should measure the whole directory."""
     result = runner.infer_coverage_scope(
         "fab/tasks",
         tmp_path,
@@ -217,13 +276,28 @@ def test_infer_coverage_scope_uses_directory_target_directly(
     assert result == "fab/tasks"
 
 
+def test_infer_coverage_scope_uses_django_app_directory_directly(
+    tmp_path: Path,
+) -> None:
+    """A Django app target should measure the whole selected app."""
+    result = runner.infer_coverage_scope(
+        "atlas/appstore/pages",
+        tmp_path,
+    )
+
+    assert result == "atlas/appstore/pages"
+
+
 def test_infer_coverage_scope_defaults_to_current_directory(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Coverage scope discovery should default to the current directory."""
+    """Coverage source discovery should default to the current directory."""
     write_file(
         tmp_path / "src" / "pytestquick" / "__init__.py",
+    )
+    write_file(
+        tmp_path / "src" / "pytestquick" / "runner.py",
     )
     monkeypatch.chdir(tmp_path)
 
@@ -231,7 +305,7 @@ def test_infer_coverage_scope_defaults_to_current_directory(
         "tests/test_runner.py",
     )
 
-    assert result == "pytestquick"
+    assert result == "pytestquick.runner"
 
 
 def test_build_command_enables_coverage_by_default(
@@ -239,7 +313,9 @@ def test_build_command_enables_coverage_by_default(
 ) -> None:
     """The default command should include terminal branch coverage."""
     require_pytest_cov = Mock()
-    infer_coverage_scope = Mock(return_value="pytestquick")
+    infer_coverage_scope = Mock(
+        return_value="pytestquick.runner",
+    )
 
     monkeypatch.setattr(
         runner,
@@ -253,24 +329,55 @@ def test_build_command_enables_coverage_by_default(
     )
 
     assert runner.build_command(
-        "tests/test_models.py",
+        "tests/test_runner.py",
         [],
     ) == [
         sys.executable,
         "-m",
         "pytest",
         "-rs",
-        "tests/test_models.py",
+        "tests/test_runner.py",
         "--disable-warnings",
-        "--cov=pytestquick",
+        "--cov=pytestquick.runner",
         "--cov-branch",
         "--cov-report=term-missing",
     ]
 
     require_pytest_cov.assert_called_once_with()
     infer_coverage_scope.assert_called_once_with(
-        "tests/test_models.py",
+        "tests/test_runner.py",
     )
+
+
+def test_build_command_uses_package_scope_for_directory_target(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A directory target should retain package-wide coverage."""
+    monkeypatch.setattr(
+        runner,
+        "require_pytest_cov",
+        Mock(),
+    )
+    monkeypatch.setattr(
+        runner,
+        "infer_coverage_scope",
+        Mock(return_value="atlas/appstore/pages"),
+    )
+
+    assert runner.build_command(
+        "atlas/appstore/pages",
+        [],
+    ) == [
+        sys.executable,
+        "-m",
+        "pytest",
+        "-rs",
+        "atlas/appstore/pages",
+        "--disable-warnings",
+        "--cov=atlas/appstore/pages",
+        "--cov-branch",
+        "--cov-report=term-missing",
+    ]
 
 
 def test_build_command_disables_coverage_when_requested() -> None:
@@ -301,7 +408,7 @@ def test_build_command_forwards_pytest_arguments_with_coverage(
     monkeypatch.setattr(
         runner,
         "infer_coverage_scope",
-        Mock(return_value="billing"),
+        Mock(return_value="billing.models"),
     )
 
     assert runner.build_command(
@@ -314,7 +421,7 @@ def test_build_command_forwards_pytest_arguments_with_coverage(
         "-rs",
         "billing/tests/test_models.py",
         "--disable-warnings",
-        "--cov=billing",
+        "--cov=billing.models",
         "--cov-branch",
         "--cov-report=term-missing",
         "-vv",
@@ -397,7 +504,7 @@ def test_build_command_list_mode_does_not_require_pytest_cov(
 def test_build_command_builds_keyword_command_with_coverage(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The grep option should combine cleanly with default coverage."""
+    """The grep option should combine cleanly with focused coverage."""
     monkeypatch.setattr(
         runner,
         "require_pytest_cov",
@@ -406,7 +513,7 @@ def test_build_command_builds_keyword_command_with_coverage(
     monkeypatch.setattr(
         runner,
         "infer_coverage_scope",
-        Mock(return_value="billing"),
+        Mock(return_value="billing.models"),
     )
 
     assert runner.build_command(
@@ -421,7 +528,7 @@ def test_build_command_builds_keyword_command_with_coverage(
         "--disable-warnings",
         "-k",
         "invoice",
-        "--cov=billing",
+        "--cov=billing.models",
         "--cov-branch",
         "--cov-report=term-missing",
     ]
@@ -457,7 +564,7 @@ def test_build_command_removes_grep_arguments_before_forwarding(
     monkeypatch.setattr(
         runner,
         "infer_coverage_scope",
-        Mock(return_value="billing"),
+        Mock(return_value="billing.models"),
     )
 
     assert runner.build_command(
@@ -477,7 +584,7 @@ def test_build_command_removes_grep_arguments_before_forwarding(
         "--disable-warnings",
         "-k",
         "invoice",
-        "--cov=billing",
+        "--cov=billing.models",
         "--cov-branch",
         "--cov-report=term-missing",
         "-vv",
@@ -515,7 +622,7 @@ def test_build_command_does_not_modify_supplied_arguments(
     monkeypatch.setattr(
         runner,
         "infer_coverage_scope",
-        Mock(return_value="billing"),
+        Mock(return_value="billing.models"),
     )
 
     runner.build_command(
@@ -639,3 +746,82 @@ def test_run_test_forwards_disabled_coverage(
         [],
         coverage=False,
     )
+
+
+def test_infer_coverage_scope_maps_init_test_to_package(
+    tmp_path: Path,
+) -> None:
+    """A test for __init__.py should cover the package itself."""
+    write_file(
+        tmp_path / "src" / "pytestquick" / "__init__.py",
+    )
+
+    result = runner.infer_coverage_scope(
+        "tests/test___init__.py",
+        tmp_path,
+    )
+
+    assert result == "pytestquick"
+
+
+def test_infer_coverage_scope_maps_nested_root_test_into_src_package(
+    tmp_path: Path,
+) -> None:
+    """Nested root tests should map into the matching src package path."""
+    write_file(
+        tmp_path / "src" / "pytestquick" / "__init__.py",
+    )
+    write_file(
+        tmp_path / "src" / "pytestquick" / "services" / "invoice.py",
+    )
+
+    result = runner.infer_coverage_scope(
+        "tests/services/test_invoice.py",
+        tmp_path,
+    )
+
+    assert result == "pytestquick.services.invoice"
+
+
+def test_infer_coverage_scope_maps_nested_root_test_without_src_package(
+    tmp_path: Path,
+) -> None:
+    """Nested root tests should consider an equivalent project path."""
+    write_file(
+        tmp_path / "services" / "invoice.py",
+    )
+
+    result = runner.infer_coverage_scope(
+        "tests/services/test_invoice.py",
+        tmp_path,
+    )
+
+    assert result == "services.invoice"
+
+
+def test_infer_coverage_scope_falls_back_for_root_python_file_with_src_package(
+    tmp_path: Path,
+) -> None:
+    """An unmatched root Python file should fall back to the src package."""
+    write_file(
+        tmp_path / "src" / "pytestquick" / "__init__.py",
+    )
+
+    result = runner.infer_coverage_scope(
+        "helper.py",
+        tmp_path,
+    )
+
+    assert result == "pytestquick"
+
+
+def test_infer_coverage_scope_falls_back_for_root_python_file_without_package(
+    tmp_path: Path,
+) -> None:
+    """An unmatched root Python file should fall back to the project."""
+    result = runner.infer_coverage_scope(
+        "helper.py",
+        tmp_path,
+    )
+
+    assert result == "."
