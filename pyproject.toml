@@ -1,6 +1,6 @@
 [project]
 name = "pytestquick"
-version = "0.1.2"
+version = "0.1.3"
 description = "A tiny CLI for quickly running the pytest tests you are currently working on."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -34,6 +34,7 @@ classifiers = [
 ]
 dependencies = [
     "pytest>=8.0",
+    "pytest-cov>=7.1.0",
 ]
 
 [project.scripts]
@@ -56,7 +57,6 @@ module-name = "pytestquick"
 dev = [
     "build>=1.5.0",
     "mypy>=2.3.0",
-    "pytest-cov>=7.1.0",
     "pytest-xdist>=3.8.0",
     "ruff>=0.16.1",
     "twine>=7.0.0",
