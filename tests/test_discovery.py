@@ -365,3 +365,15 @@ def test_find_app_dir_skips_excluded_tree(tmp_path: Path) -> None:
     valid = tmp_path / "src" / "billing"
     write_file(valid / "tests" / "test_good.py")
     assert find_app_dir("billing", tmp_path) == valid
+
+
+def test_discovery_respects_string_norecursedirs(tmp_path: Path) -> None:
+    """A space-separated pytest norecursedirs setting also prunes directories."""
+    write_file(
+        tmp_path / "pyproject.toml",
+        '[tool.pytest.ini_options]\nnorecursedirs = "generated vendor"\n',
+    )
+    valid = write_file(tmp_path / "tests" / "test_valid.py")
+    write_file(tmp_path / "generated" / "tests" / "test_hidden.py")
+    write_file(tmp_path / "vendor" / "tests" / "test_hidden.py")
+    assert find_all_test_files(tmp_path) == [valid]
