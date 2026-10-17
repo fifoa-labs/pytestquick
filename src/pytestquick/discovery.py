@@ -10,6 +10,7 @@ import fnmatch
 import os
 import re
 import tomllib
+from collections.abc import Iterator
 from pathlib import Path
 
 
@@ -61,7 +62,7 @@ def _excluded_patterns(start_dir: Path) -> tuple[str, ...]:
     return (*sorted(DEFAULT_EXCLUDED_DIRS), *configured)
 
 
-def _walk_directories(start_dir: Path):
+def _walk_directories(start_dir: Path) -> Iterator[tuple[Path, list[str]]]:
     """Yield directories while pruning excluded trees before traversal."""
     patterns = _excluded_patterns(start_dir)
     for current, dirs, files in os.walk(start_dir):
