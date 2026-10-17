@@ -330,3 +330,50 @@ def test_find_test_class_returns_none_when_missing(
     )
 
     assert find_test_class("TestInvoice", tmp_path) is None
+
+
+def test_discovery_prunes_builtin_exclusions(tmp_path: Path) -> None:
+    """Newest test in a dependency tree must not override project tests."""
+    valid = write_file(tmp_path / "atlas" / "tests" / "test_valid.py")
+    ignored = write_file(tmp_path / "node_modules" / "tests" / "test_hidden.py")
+    os.utime(valid, ns=(1_000_000_000, 1_000_000_000))
+    os.utime(ignored, ns=(2_000_000_000, 2_000_000_000))
+    assert find_latest_test_file(tmp_path) == valid
+
+
+def test_discovery_respects_pyproject_norecursedirs(tmp_path: Path) -> None:
+    """Configured exclusions are pruned as well as built-in exclusions."""
+    write_file(
+        tmp_path / "pyproject.toml",
+        '[tool.pytest.ini_options]\nnorecursedirs = ["generated"]\n',
+    )
+    valid = write_file(tmp_path / "tests" / "test_valid.py")
+    write_file(tmp_path / "generated" / "tests" / "test_hidden.py")
+    assert find_all_test_files(tmp_path) == [valid]
+
+
+def test_explicit_directory_scan_keeps_tests_in_named_root(tmp_path: Path) -> None:
+    """Scanning a chosen test directory does not exclude its own root."""
+    root = tmp_path / "node_modules"
+    valid = write_file(root / "test_valid.py")
+    assert find_test_files_under_dir(root) == [valid]
+
+
+def test_find_app_dir_skips_excluded_tree(tmp_path: Path) -> None:
+    """Application lookup must also avoid excluded dependency trees."""
+    write_file(tmp_path / "node_modules" / "billing" / "tests" / "test_bad.py")
+    valid = tmp_path / "src" / "billing"
+    write_file(valid / "tests" / "test_good.py")
+    assert find_app_dir("billing", tmp_path) == valid
+
+
+def test_discovery_respects_string_norecursedirs(tmp_path: Path) -> None:
+    """A space-separated pytest norecursedirs setting also prunes directories."""
+    write_file(
+        tmp_path / "pyproject.toml",
+        '[tool.pytest.ini_options]\nnorecursedirs = "generated vendor"\n',
+    )
+    valid = write_file(tmp_path / "tests" / "test_valid.py")
+    write_file(tmp_path / "generated" / "tests" / "test_hidden.py")
+    write_file(tmp_path / "vendor" / "tests" / "test_hidden.py")
+    assert find_all_test_files(tmp_path) == [valid]

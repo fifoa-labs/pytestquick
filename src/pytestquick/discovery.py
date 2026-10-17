@@ -6,8 +6,15 @@ Test-file and pytest-target discovery helpers.
 
 from __future__ import annotations
 
+import fnmatch
+import os
 import re
+import tomllib
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 
 def is_test_file(path: Path) -> bool:
@@ -25,13 +32,66 @@ def is_test_file(path: Path) -> bool:
     )
 
 
-def find_all_test_files(start_dir: Path) -> list[Path]:
-    """
-    Return all pytest-style test files under a directory.
+DEFAULT_EXCLUDED_DIRS = frozenset(
+    {
+        ".git",
+        ".venv",
+        "venv",
+        "node_modules",
+        "__pycache__",
+        ".pytest_cache",
+        ".mypy_cache",
+        ".ruff_cache",
+        ".tox",
+        ".nox",
+        "dist",
+        "build",
+        "staticfiles",
+    }
+)
 
-    Results are returned in deterministic path order.
-    """
-    return sorted(path for path in start_dir.rglob("*.py") if is_test_file(path))
+
+def _excluded_patterns(start_dir: Path) -> tuple[str, ...]:
+    """Combine safe defaults with pytest's configured norecursedirs."""
+    config = start_dir / "pyproject.toml"
+    if not config.is_file():
+        return tuple(sorted(DEFAULT_EXCLUDED_DIRS))
+    with config.open("rb") as stream:
+        data = tomllib.load(stream)
+    pytest_options = data.get("tool", {}).get("pytest", {}).get("ini_options", {})
+    configured = pytest_options.get("norecursedirs", [])
+    if isinstance(configured, str):
+        configured = configured.split()
+    return (*sorted(DEFAULT_EXCLUDED_DIRS), *configured)
+
+
+def _walk_directories(start_dir: Path) -> Iterator[tuple[Path, list[str]]]:
+    """Yield directories while pruning excluded trees before traversal."""
+    patterns = _excluded_patterns(start_dir)
+    for current, dirs, files in os.walk(start_dir):
+        relative = Path(current).relative_to(start_dir)
+        dirs[:] = sorted(
+            name
+            for name in dirs
+            if not any(
+                fnmatch.fnmatch(name, pattern)
+                or fnmatch.fnmatch((relative / name).as_posix(), pattern)
+                for pattern in patterns
+            )
+        )
+        yield Path(current), files
+
+
+def find_all_test_files(start_dir: Path) -> list[Path]:
+    """Return pytest-style test files without descending into excluded trees."""
+    results = []
+    for directory, files in _walk_directories(start_dir):
+        for name in files:
+            if name.endswith(".py"):
+                path = directory / name
+                if is_test_file(path):
+                    results.append(path)
+    return sorted(results)
 
 
 def find_test_files_under_dir(root: Path) -> list[Path]:
@@ -87,9 +147,9 @@ def find_app_dir(app_name: str, start_dir: Path) -> Path | None:
     """
     candidates = sorted(
         (
-            path
-            for path in start_dir.rglob(app_name)
-            if path.is_dir() and path.name == app_name
+            directory
+            for directory, _ in _walk_directories(start_dir)
+            if directory.name == app_name
         ),
         key=lambda path: (len(path.parts), str(path)),
     )
