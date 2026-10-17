@@ -28,11 +28,23 @@ def is_test_file(path: Path) -> bool:
     )
 
 
-DEFAULT_EXCLUDED_DIRS = frozenset({
-    ".git", ".venv", "venv", "node_modules", "__pycache__",
-    ".pytest_cache", ".mypy_cache", ".ruff_cache", ".tox", ".nox",
-    "dist", "build", "staticfiles",
-})
+DEFAULT_EXCLUDED_DIRS = frozenset(
+    {
+        ".git",
+        ".venv",
+        "venv",
+        "node_modules",
+        "__pycache__",
+        ".pytest_cache",
+        ".mypy_cache",
+        ".ruff_cache",
+        ".tox",
+        ".nox",
+        "dist",
+        "build",
+        "staticfiles",
+    }
+)
 
 
 def _excluded_patterns(start_dir: Path) -> tuple[str, ...]:
@@ -55,7 +67,8 @@ def _walk_directories(start_dir: Path):
     for current, dirs, files in os.walk(start_dir):
         relative = Path(current).relative_to(start_dir)
         dirs[:] = sorted(
-            name for name in dirs
+            name
+            for name in dirs
             if not any(
                 fnmatch.fnmatch(name, pattern)
                 or fnmatch.fnmatch((relative / name).as_posix(), pattern)
